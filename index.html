@@ -54,6 +54,16 @@
         input[type=number] {
             -moz-appearance: textfield;
         }
+
+        /* Clases dinámicas para el Timeline Interactivo */
+        .badge-completed {
+            background-color: #22c55e !important; /* Verde */
+            color: #ffffff !important;
+            border-color: #ffffff !important;
+        }
+        .step-content {
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
 <body class="min-h-screen pb-20">
@@ -418,6 +428,208 @@
                 document.getElementById('input-total').value = formattedTotal;
             }
         }
+
+        // --- LÓGICA DEL TIMELINE INTERACTIVO ---
+        let currentActivePhase = 1;
+        const totalPhases = 8;
+
+        function setupInteractiveTimeline() {
+            const items = document.querySelectorAll('.timeline-item');
+            
+            items.forEach((item, index) => {
+                const phaseNumber = index + 1;
+                item.id = `step-${phaseNumber}`;
+                item.setAttribute('data-step', phaseNumber);
+                item.classList.add('transition-all', 'duration-500');
+
+                const card = item.querySelector('.bg-black');
+                const badge = item.querySelector('.z-10.rounded-full');
+
+                if (card && badge) {
+                    // 1. Reestructurar la tarjeta para hacerla colapsable
+                    const title = card.querySelector('h3');
+                    if (title) {
+                        const titleText = title.innerText;
+                        const titleColorClass = Array.from(title.classList).find(c => c.startsWith('text-') && !c.includes('text-xl'));
+
+                        // Cabecera clickeable
+                        const header = document.createElement('div');
+                        header.className = 'flex flex-col md:flex-row justify-between items-start md:items-center cursor-pointer mb-2 border-b border-gray-800/50 pb-2 md:border-none md:pb-0';
+                        header.onclick = () => clickBadge(phaseNumber);
+                        
+                        const newTitle = document.createElement('h3');
+                        newTitle.className = `font-bold text-xl ${titleColorClass || 'text-white'}`;
+                        newTitle.innerText = titleText;
+                        
+                        const status = document.createElement('span');
+                        status.className = 'status-indicator mt-1 md:mt-0 text-xs font-mono';
+                        
+                        header.appendChild(newTitle);
+                        header.appendChild(status);
+
+                        // Contenedor del contenido (lo que se oculta)
+                        const contentWrapper = document.createElement('div');
+                        contentWrapper.className = 'step-content mt-2';
+
+                        let nextNode = title.nextSibling;
+                        while (nextNode) {
+                            const toMove = nextNode;
+                            nextNode = nextNode.nextSibling;
+                            contentWrapper.appendChild(toMove);
+                        }
+                        title.remove();
+
+                        // Añadir el botón para avanzar
+                        const btnContainer = document.createElement('div');
+                        btnContainer.className = 'mt-5 pt-4 border-t border-gray-800 md:text-right';
+                        const btn = document.createElement('button');
+                        
+                        if (phaseNumber === totalPhases) {
+                            btn.innerText = `>> FINALIZAR PROTOCOLO`;
+                            btn.className = `w-full md:w-auto bg-green-900/50 hover:bg-green-700 text-green-300 px-4 py-2 rounded font-mono text-sm border border-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500`;
+                        } else {
+                            btn.innerText = `>> MARCAR FASE ${phaseNumber} COMO COMPLETADA`;
+                            btn.className = `w-full md:w-auto bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded font-mono text-sm border border-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500`;
+                        }
+                        
+                        btn.onclick = (e) => { e.stopPropagation(); clickBadge(phaseNumber); };
+                        btnContainer.appendChild(btn);
+                        contentWrapper.appendChild(btnContainer);
+
+                        card.appendChild(header);
+                        card.appendChild(contentWrapper);
+                    }
+
+                    // 2. Configurar los iconos circulares (Badges)
+                    badge.classList.add('cursor-pointer', 'step-badge', 'hover:scale-110', 'transition-transform');
+                    badge.onclick = () => clickBadge(phaseNumber);
+
+                    const badgeNodes = Array.from(badge.childNodes);
+                    badge.innerHTML = '';
+                    
+                    const numSpan = document.createElement('span');
+                    numSpan.className = 'badge-number';
+                    
+                    const tooltipDiv = badgeNodes.find(n => n.nodeType === 1 && n.classList.contains('absolute'));
+                    const textNode = badgeNodes.find(n => n.nodeType === 3 && n.textContent.trim() !== '');
+                    
+                    if (textNode) {
+                        numSpan.innerText = textNode.textContent.trim();
+                    } else if (phaseNumber === totalPhases) {
+                        numSpan.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>';
+                    }
+                    
+                    const iconSpan = document.createElement('span');
+                    iconSpan.className = 'badge-icon hidden';
+                    iconSpan.innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>';
+
+                    badge.appendChild(numSpan);
+                    badge.appendChild(iconSpan);
+                    if (tooltipDiv) badge.appendChild(tooltipDiv);
+                }
+            });
+            
+            updatePhases();
+        }
+
+        // Maneja los clicks para avanzar o desplegar fases
+        function clickBadge(phase) {
+            if (phase === currentActivePhase) {
+                currentActivePhase++;
+                updatePhases();
+                
+                // Efecto "scroll" automático y suave al siguiente paso
+                setTimeout(() => {
+                    const nextStep = document.getElementById('step-' + Math.min(currentActivePhase, totalPhases));
+                    if(nextStep && currentActivePhase <= totalPhases) {
+                        const y = nextStep.getBoundingClientRect().top + window.scrollY - 150;
+                        window.scrollTo({top: y, behavior: 'smooth'});
+                    }
+                }, 150);
+            } else if (phase < currentActivePhase) {
+                // Si haces click en una anterior, la despliega/contrae
+                const content = document.querySelector(`#step-${phase} .step-content`);
+                if(content) {
+                    content.style.display = content.style.display === 'none' ? 'block' : 'none';
+                }
+            }
+        }
+
+        // Refresca la interfaz de colores y visibilidad
+        function updatePhases() {
+            const items = document.querySelectorAll('.timeline-item');
+            
+            items.forEach((item) => {
+                const phase = parseInt(item.getAttribute('data-step'));
+                const badge = item.querySelector('.step-badge');
+                const badgeNum = item.querySelector('.badge-number');
+                const badgeIcon = item.querySelector('.badge-icon');
+                const content = item.querySelector('.step-content');
+                const status = item.querySelector('.status-indicator');
+                const tooltip = badge.querySelector('.absolute');
+
+                if (phase > currentActivePhase) {
+                    // ESTADO: PENDIENTE / FUTURO
+                    item.classList.add('opacity-40', 'grayscale');
+                    if(content) content.style.display = 'none';
+                    badge.classList.remove('animate-pulse', 'ring-4', 'badge-completed');
+                    
+                    if(badgeNum) badgeNum.classList.remove('hidden');
+                    if(badgeIcon) badgeIcon.classList.add('hidden');
+                    if(tooltip) tooltip.classList.add('opacity-0', 'pointer-events-none');
+                    
+                    if(status) {
+                        status.innerText = '[ EN ESPERA ]';
+                        status.className = 'status-indicator mt-1 md:mt-0 text-xs font-mono text-gray-500';
+                    }
+
+                } else if (phase === currentActivePhase) {
+                    // ESTADO: ACTIVO / EN PROGRESO
+                    item.classList.remove('opacity-40', 'grayscale');
+                    if(content) content.style.display = 'block';
+                    badge.classList.remove('badge-completed');
+                    badge.classList.add('animate-pulse', 'ring-4', 'ring-white/50');
+                    
+                    if(badgeNum) badgeNum.classList.remove('hidden');
+                    if(badgeIcon) badgeIcon.classList.add('hidden');
+                    if(tooltip) tooltip.classList.remove('opacity-0', 'pointer-events-none');
+                    
+                    if(status) {
+                        status.innerText = '[ ACCIÓN REQUERIDA ]';
+                        status.className = 'status-indicator mt-1 md:mt-0 text-xs font-mono text-yellow-400 animate-pulse';
+                    }
+
+                } else {
+                    // ESTADO: COMPLETADO
+                    item.classList.remove('opacity-40', 'grayscale');
+                    if(content) content.style.display = 'none'; // Colapsar por defecto al terminar
+                    badge.classList.remove('animate-pulse', 'ring-4');
+                    badge.classList.add('badge-completed');
+                    
+                    if(badgeNum) badgeNum.classList.add('hidden');
+                    if(badgeIcon) badgeIcon.classList.remove('hidden');
+                    if(tooltip) tooltip.classList.add('opacity-0', 'pointer-events-none');
+                    
+                    if(status) {
+                        status.innerText = '[ COMPLETADA - CLICK PARA VER ]';
+                        status.className = 'status-indicator mt-1 md:mt-0 text-xs font-mono text-green-500 hover:text-green-400';
+                    }
+                }
+            });
+            
+            // Actualizar la cabecera general
+            const globalStatus = document.querySelector('p.text-gray-400.text-sm.mt-1.font-mono');
+            if(globalStatus) {
+                if(currentActivePhase > totalPhases) {
+                    globalStatus.innerHTML = '> ESTADO: <span class="text-green-400 font-bold animate-pulse">PROTOCOLO FINALIZADO CON ÉXITO</span>';
+                } else {
+                    globalStatus.innerHTML = `> ESTADO: EJECUTANDO FASE ${currentActivePhase} DE ${totalPhases}...`;
+                }
+            }
+        }
+
+        // Arrancar el motor interactivo
+        setupInteractiveTimeline();
     </script>
 </body>
 </html>
